@@ -5,6 +5,8 @@ from pyspark.sql.types import *
 from dataframe_loader import load_partitioned_csv
 from data_schema import flight_schema
 from data_validation import validate_dataframe
+from statistic_analysis import analyze_numerical_features
+
 
 def main():
     logging.basicConfig(
@@ -35,11 +37,21 @@ def main():
         logger.info("Перегляд перших 5 рядків DataFrame:")
         flight_df.show(5)
 
+        # Коментар Лізи: я взяла тільки 1% даних, щоб побачити чи все працює
+        flight_df = flight_df.sample(fraction=0.01, seed=42)
+        logger.info(f"Для тестування взято {flight_df.count()} рядків.")
+
         is_valid = validate_dataframe(flight_df, flight_schema)
         if not is_valid:
             raise ValueError("Дані не пройшли валідацію. Зупинка пайплайну.")
 
         logger.info("Дані готові до попередньої обробки (Preprocessing).")
+
+        # ЕТАП ПОПЕРЕДНЬОЇ ОБРОБКИ
+        logger.info("--- Початок попередньої обробки ---")
+
+        # Статистика числових ознак
+        stats_df = analyze_numerical_features(flight_df)
 
     except Exception as e:
         logger.error(f"Сталася помилка під час виконання: {e}")
