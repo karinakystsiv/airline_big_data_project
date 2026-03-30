@@ -6,7 +6,7 @@ from dataframe_loader import load_partitioned_csv
 from data_schema import flight_schema
 from data_validation import validate_dataframe
 from statistic_analysis import analyze_numerical_features
-
+from removing_noninformative_fields import clean_data
 
 def main():
     logging.basicConfig(
@@ -51,6 +51,10 @@ def main():
 
         # ЕТАП ПОПЕРЕДНЬОЇ ОБРОБКИ
         logger.info("--- Початок попередньої обробки ---")
+
+        flight_df = clean_data(flight_df)
+        logger.info("Схема DataFrame після оптимізації типів:")
+        flight_df.printSchema()
 
         # Статистика числових ознак
         stats_df = analyze_numerical_features(flight_df)
