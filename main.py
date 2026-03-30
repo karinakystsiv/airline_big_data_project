@@ -33,6 +33,8 @@ def main():
             schema=flight_schema,
             recursive=True
         )
+        logger.info("Схема завантаженого DataFrame:")
+        flight_df.printSchema()
 
         logger.info("Перегляд перших 5 рядків DataFrame:")
         flight_df.show(5)
