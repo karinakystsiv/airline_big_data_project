@@ -148,7 +148,39 @@ def parse_datetime_features(df: DataFrame) -> DataFrame:
     return df
 
 
+def handle_duplicates(df: DataFrame) -> DataFrame:
+    logger.info("=== Аналіз та видалення дублікатів ===")
+
+    total = df.count()
+    logger.info(f"Загальна кількість рядків: {total}")
+
+    # 1. Повні дублікати (всі колонки ідентичні)
+    df_no_full_dupes = df.dropDuplicates()
+    after_full = df_no_full_dupes.count()
+    full_dupes = total - after_full
+    logger.info(f"Повних дублікатів: {full_dupes} ({(full_dupes / total) * 100:.2f}%)")
+
+    # 2. Часткові дублікати за ключовими полями рейсу
+    key_cols = ["FL_DATE", "OP_CARRIER", "OP_CARRIER_FL_NUM", "ORIGIN", "DEST", "CRS_DEP_TIME"]
+    present_keys = [c for c in key_cols if c in df_no_full_dupes.columns]
+
+    df_deduped = df_no_full_dupes.dropDuplicates(subset=present_keys)
+    after_partial = df_deduped.count()
+    partial_dupes = after_full - after_partial
+    logger.info(
+        f"Часткових дублікатів (за {present_keys}): {partial_dupes} ({(partial_dupes / total) * 100:.2f}%)"
+    )
+
+    total_removed = total - after_partial
+    logger.info(f"Всього видалено дублікатів: {total_removed} з {total} рядків")
+    logger.info(f"Залишилось рядків: {after_partial}")
+    logger.info("=== Аналіз дублікатів завершено ===")
+
+    return df_deduped
+
+
 def preprocess(df: DataFrame) -> DataFrame:
+    df = handle_duplicates(df)
     df = handle_missing_values(df)
     df = parse_datetime_features(df)
     return df
