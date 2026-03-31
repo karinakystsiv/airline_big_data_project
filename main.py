@@ -7,6 +7,7 @@ from data_schema import flight_schema
 from data_validation import validate_dataframe
 from statistic_analysis import analyze_numerical_features
 from removing_noninformative_fields import clean_data
+from data_preprocessing import preprocess
 
 def main():
     logging.basicConfig(
@@ -55,6 +56,11 @@ def main():
         flight_df = clean_data(flight_df)
         logger.info("Схема DataFrame після оптимізації типів:")
         flight_df.printSchema()
+
+        flight_df = preprocess(flight_df)                    
+        logger.info("Схема DataFrame після препроцесингу:")  
+        flight_df.printSchema()                             
+        flight_df.show(5, truncate=False)                    
 
         # Статистика числових ознак
         stats_df = analyze_numerical_features(flight_df)
