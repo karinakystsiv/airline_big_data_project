@@ -8,6 +8,9 @@ from data_validation import validate_dataframe
 from statistic_analysis import analyze_numerical_features
 from removing_noninformative_fields import clean_data
 from data_preprocessing import preprocess
+from data_modeling import create_all_tables
+from business_logic_1 import run_business_questions, save_results
+from business_logic_2 import run_business_questions_2, save_results_2
 
 def main():
     logging.basicConfig(
@@ -57,13 +60,33 @@ def main():
         logger.info("Схема DataFrame після оптимізації типів:")
         flight_df.printSchema()
 
-        flight_df = preprocess(flight_df)                    
-        logger.info("Схема DataFrame після препроцесингу:")  
-        flight_df.printSchema()                             
-        flight_df.show(5, truncate=False)                    
+        flight_df = preprocess(flight_df)
+        logger.info("Схема DataFrame після препроцесингу:")
+        flight_df.printSchema()
+        flight_df.show(5, truncate=False)
 
         # Статистика числових ознак
         stats_df = analyze_numerical_features(flight_df)
+
+        # ЕТАП ТРАНСФОРМАЦІЇ
+        logger.info("--- Початок етапу трансформації ---")
+        flights_fact, carriers_dim, airports_dim, date_dim = create_all_tables(flight_df)
+        logger.info("Таблиці створено. Запускаємо бізнес-питання...")
+
+        bq1, bq2, bq3, bq4, bq5, bq6 = run_business_questions(
+            flights_fact, carriers_dim, airports_dim, date_dim
+        )
+
+        logger.info("Зберігаємо результати...")
+        save_results(bq1, bq2, bq3, bq4, bq5, bq6, output_path=r"output/business_logic_1")
+
+        # business_logic_2
+        r1, r2, r3, r4, r5, r6 = run_business_questions_2(
+            flights_fact, carriers_dim, airports_dim, date_dim
+        )
+        save_results_2(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_2")
+
+        logger.info("Всі результати збережено.")
 
     except Exception as e:
         logger.error(f"Сталася помилка під час виконання: {e}")
