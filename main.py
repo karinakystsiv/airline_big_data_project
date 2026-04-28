@@ -10,6 +10,7 @@ from removing_noninformative_fields import clean_data
 from data_preprocessing import preprocess
 from data_modeling import create_all_tables
 from business_logic_1 import run_business_questions, save_results
+from business_logic_2 import run_business_questions_2, save_results_2
 
 def main():
     logging.basicConfig(
@@ -77,7 +78,14 @@ def main():
         )
 
         logger.info("Зберігаємо результати...")
-        save_results(bq1, bq2, bq3, bq4, bq5, bq6, output_path=r"C:\Users\Elizabeth\VDD\output")
+        save_results(bq1, bq2, bq3, bq4, bq5, bq6, output_path=r"output/business_logic_1")
+
+        # business_logic_2
+        r1, r2, r3, r4, r5, r6 = run_business_questions_2(
+            flights_fact, carriers_dim, airports_dim, date_dim
+        )
+        save_results_2(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_2")
+
         logger.info("Всі результати збережено.")
 
     except Exception as e:
