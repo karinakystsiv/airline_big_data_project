@@ -11,7 +11,7 @@ from data_preprocessing import preprocess
 from data_modeling import create_all_tables
 from business_logic_1 import run_business_questions, save_results
 from business_logic_2 import run_business_questions_2, save_results_2
-
+from business_logic_3 import run_business_questions_3, save_results_3
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -87,6 +87,12 @@ def main():
         save_results_2(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_2")
 
         logger.info("Всі результати збережено.")
+        #business_logic_3
+        r1, r2, r3, r4, r5, r6 = run_business_questions_3(
+            flights_fact, carriers_dim, airports_dim, date_dim
+        )
+
+        save_results_3(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_3")
 
     except Exception as e:
         logger.error(f"Сталася помилка під час виконання: {e}")
