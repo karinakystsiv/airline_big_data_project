@@ -1,8 +1,10 @@
+
 import logging
 import os
 import shutil
 import glob
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
@@ -12,213 +14,139 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = "output/business_logic_3"
 
 
-# =========================================================
-# SAVE helper -> ОДИН CSV файл на результат
-# =========================================================
 def save_single_csv(df: DataFrame, path: str):
     tmp_path = path + "_tmp"
-
-    df.coalesce(1).write.mode("overwrite") \
-        .option("header", "true") \
-        .csv(tmp_path)
-
-    part_file = glob.glob(f"{tmp_path}/part-*")[0]
-
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    shutil.move(part_file, path)
-
+    df.coalesce(1).write.mode("overwrite").option("header", "true").csv(tmp_path)
+    part_files = glob.glob(f"{tmp_path}/part-*")
+    if part_files:
+        part_file = part_files[0]
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        shutil.move(part_file, path)
     shutil.rmtree(tmp_path)
 
 
-# =========================================================
-# BQ7
-# =========================================================
-def bq7_airport_season_reliability(flights: DataFrame, date_dim: DataFrame):
+def create_visualizations(df: DataFrame, bq_name: str, title: str):
+    """Створює та зберігає графік у синіх тонах для кожного BQ"""
+    try:
+        # Конвертуємо в Pandas для візуалізації (тільки невеликі результати!)
+        pdf = df.limit(15).toPandas()
+        if pdf.empty:
+            return
 
-    date_clean = date_dim.select("FL_DATE", "season")
+        plt.figure(figsize=(12, 6))
+        sns.set_theme(style="whitegrid")
 
-    df = (
-        flights
-        .join(date_clean, "FL_DATE", "inner")
-        .groupBy("ORIGIN", "season")
-        .agg(
-            F.count("*").alias("total"),
-            F.sum(F.when(F.col("DEP_DELAY") <= 0, 1).otherwise(0)).alias("on_time")
-        )
-        .withColumn("on_time_rate", F.col("on_time") / F.col("total"))
-        .filter(F.col("total") >= 200)
-    )
+        # Налаштування синьої палітри
+        blue_palette = sns.color_palette("Blues_r", len(pdf))
 
-    w = Window.partitionBy("season").orderBy(F.desc("on_time_rate"))
+        if bq_name == "bq7":
+            sns.barplot(data=pdf, x="distance_category", y="cancellation_rate_pct", palette="Blues_d")
+        elif bq_name == "bq8":
+            sns.lineplot(data=pdf, x="d_month", y="recovery_diff", hue="OP_CARRIER", marker="o", palette="Blues")
+        elif bq_name == "bq9":
+            sns.barplot(data=pdf, x="ORIGIN", y="sec_delay_share_pct", palette="Blues_d")
+        elif bq_name == "bq10":
+            sns.barplot(data=pdf, x="d_year", y="yoy_growth_pct", hue="ORIGIN", palette="Blues")
+        elif bq_name == "bq11":
+            sns.barplot(data=pdf, x="ORIGIN", y="avg_late_delay", palette="Blues_d")
+        elif bq_name == "bq12":
+            sns.barplot(data=pdf, x="ORIGIN", y="avg_total_taxi", palette="Blues_d")
 
-    result = df.withColumn("rank", F.dense_rank().over(w))
+        plt.title(title, fontsize=15, pad=20, color='#1f4e79')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
 
-    result.show(5, truncate=False)
-    return result
+        # Зберігаємо графік
+        chart_path = f"{OUTPUT_DIR}/{bq_name}_chart.png"
+        plt.savefig(chart_path)
+        plt.close()
+        logger.info(f"Chart saved: {chart_path}")
+    except Exception as e:
+        logger.warning(f"Could not create chart for {bq_name}: {e}")
 
 
-# =========================================================
-# BQ8 (FIXED YEAR AMBIGUITY)
-# =========================================================
-def bq8_carrier_trend(flights: DataFrame, date_dim: DataFrame):
+# Функції bq7 - bq12 залишаються такими ж, як у попередньому повідомленні...
+# (Тут вони просто повертають DataFrame)
 
-    date_clean = date_dim.select(
-        "FL_DATE",
-        F.col("YEAR").alias("d_year"),
-        F.col("MONTH").alias("d_month")
-    )
+def bq7_distance_cancellation_impact(flights):
+    return flights.withColumn("distance_category",
+                              F.when(F.col("DISTANCE") < 500, "Short").when(F.col("DISTANCE") < 1500,
+                                                                            "Medium").otherwise("Long")) \
+        .groupBy("distance_category").agg(F.count("*").alias("total"),
+                                          F.sum(F.col("CANCELLED").cast("int")).alias("cancelled")) \
+        .withColumn("cancellation_rate_pct", F.round(F.col("cancelled") / F.col("total") * 100, 2)).orderBy(
+        F.desc("cancellation_rate_pct"))
 
-    monthly = (
-        flights
-        .join(date_clean, "FL_DATE", "inner")
-        .groupBy("OP_CARRIER", "d_year", "d_month")
-        .agg(F.avg("ARR_DELAY").alias("avg_delay"))
-    )
 
+def bq8_carrier_recovery_speed(flights, date_dim):
+    d_clean = date_dim.select("FL_DATE", F.col("YEAR").alias("d_year"), F.col("MONTH").alias("d_month")).distinct()
+    res = flights.filter(F.col("DEP_DELAY") > 15).join(d_clean, "FL_DATE") \
+        .groupBy("OP_CARRIER", "d_year", "d_month").agg(F.avg("DEP_DELAY").alias("avg_delay"),
+                                                        F.avg("ARR_DELAY").alias("avg_arr_delay")) \
+        .withColumn("recovery_diff", F.col("avg_arr_delay") - F.col("avg_delay"))
     w = Window.partitionBy("OP_CARRIER").orderBy("d_year", "d_month")
-
-    result = (
-        monthly
-        .withColumn("prev", F.lag("avg_delay").over(w))
-        .filter(F.col("prev").isNotNull())
-        .withColumn("change", F.col("avg_delay") - F.col("prev"))
-    )
-
-    result.show(5, truncate=False)
-    return result
+    return res.withColumn("prev_recovery", F.lag("recovery_diff").over(w)).limit(20)
 
 
-# =========================================================
-# BQ9
-# =========================================================
-def bq9_airport_variability(flights: DataFrame):
-
-    result = (
-        flights
-        .filter(F.col("ARR_DELAY").isNotNull())
-        .groupBy("ORIGIN")
-        .agg(
-            F.stddev("ARR_DELAY").alias("std_delay"),
-            F.count("*").alias("flights")
-        )
-        .filter(F.col("flights") >= 100)
-        .orderBy(F.desc("std_delay"))
-        .limit(15)
-    )
-
-    result.show(15, truncate=False)
-    return result
+def bq9_security_delay_airports(flights, airports_dim):
+    air_c = airports_dim.select(F.col("AIRPORT").alias("AIR_ID"), "total_flights_from")
+    return flights.filter(F.col("SECURITY_DELAY") >= 0).join(air_c, flights.ORIGIN == air_c.AIR_ID) \
+        .groupBy("ORIGIN", "total_flights_from").agg(F.count("*").alias("sec_delayed_flights")) \
+        .withColumn("sec_delay_share_pct",
+                    F.round(F.col("sec_delayed_flights") / F.col("total_flights_from") * 100, 4)).orderBy(
+        F.desc("sec_delay_share_pct")).limit(10)
 
 
-# =========================================================
-# BQ10
-# =========================================================
-def bq10_route_stability(flights: DataFrame, airports_dim: DataFrame):
-
-    df = (
-        flights
-        .join(airports_dim, flights.ORIGIN == airports_dim.AIRPORT, "inner")
-        .filter(F.col("ARR_DELAY").isNotNull())
-        .groupBy("OP_CARRIER", "ORIGIN", "DEST")
-        .agg(
-            F.avg("ARR_DELAY").alias("avg_delay"),
-            F.stddev("ARR_DELAY").alias("std_delay"),
-            F.count("*").alias("cnt")
-        )
-        .filter(F.col("cnt") >= 80)
-    )
-
-    w = Window.partitionBy("OP_CARRIER").orderBy("std_delay")
-
-    result = df.withColumn("rank", F.row_number().over(w)).filter(F.col("rank") <= 5)
-
-    result.show(10, truncate=False)
-    return result
+def bq10_airport_growth_yoy(flights, date_dim):
+    d_c = date_dim.select("FL_DATE", F.col("YEAR").alias("d_year")).distinct()
+    yearly = flights.join(d_c, "FL_DATE").groupBy("ORIGIN", "d_year").agg(F.count("*").alias("flights"))
+    w = Window.partitionBy("ORIGIN").orderBy("d_year")
+    return yearly.withColumn("prev_year_flights", F.lag("flights").over(w)).filter("prev_year_flights is not null") \
+        .withColumn("yoy_growth_pct",
+                    F.round((F.col("flights") - F.col("prev_year_flights")) / F.col("prev_year_flights") * 100,
+                            2)).limit(15)
 
 
-# =========================================================
-# BQ11
-# =========================================================
-def bq11_early_arrivals(flights: DataFrame):
-
-    df = (
-        flights
-        .filter(F.col("ARR_DELAY").isNotNull())
-        .groupBy("DEST")
-        .agg(
-            F.count("*").alias("total"),
-            F.sum(F.when(F.col("ARR_DELAY") < 0, 1).otherwise(0)).alias("early")
-        )
-        .filter(F.col("total") >= 150)
-        .withColumn("early_rate", F.col("early") / F.col("total"))
-    )
-
-    w = Window.orderBy(F.desc("early_rate"))
-
-    result = df.withColumn("percent_rank", F.percent_rank().over(w))
-
-    result.show(10, truncate=False)
-    return result
+def bq11_late_aircraft_propagation(flights):
+    return flights.filter("LATE_AIRCRAFT_DELAY >= 0").groupBy("ORIGIN", "DEST").agg(
+        F.avg("LATE_AIRCRAFT_DELAY").alias("avg_late_delay")) \
+        .filter("avg_late_delay > 0").orderBy(F.desc("avg_late_delay")).limit(10)
 
 
-# =========================================================
-# BQ12
-# =========================================================
-def bq12_distance_effect(flights: DataFrame):
-
-    df = (
-        flights
-        .filter(F.col("ARR_DELAY").isNotNull())
-        .withColumn(
-            "distance_bin",
-            F.when(F.col("DISTANCE") < 500, "short")
-             .when(F.col("DISTANCE") < 1500, "medium")
-             .otherwise("long")
-        )
-        .groupBy("distance_bin")
-        .agg(
-            F.avg("ARR_DELAY").alias("avg_delay"),
-            F.count("*").alias("flights")
-        )
-    )
-
-    w = Window.orderBy("distance_bin")
-
-    result = df.withColumn("trend_rank", F.dense_rank().over(w))
-
-    result.show(truncate=False)
-    return result
+def bq12_taxi_efficiency(flights, airports_dim):
+    air_c = airports_dim.select(F.col("AIRPORT").alias("A_ID"), "total_flights_from")
+    return flights.filter("TAXI_IN is not null and TAXI_OUT is not null").withColumn("total_taxi",
+                                                                                     F.col("TAXI_IN") + F.col(
+                                                                                         "TAXI_OUT")) \
+        .join(air_c, F.col("ORIGIN") == F.col("A_ID")).groupBy("ORIGIN").agg(
+        F.avg("total_taxi").alias("avg_total_taxi")).orderBy("avg_total_taxi").limit(10)
 
 
-# =========================================================
-# RUN ALL
-# =========================================================
-def run_business_questions_3(flights_fact, carriers_dim, airports_dim, date_dim):
-
-    r1 = bq7_airport_season_reliability(flights_fact, date_dim)
-    r2 = bq8_carrier_trend(flights_fact, date_dim)
-    r3 = bq9_airport_variability(flights_fact)
-    r4 = bq10_route_stability(flights_fact, airports_dim)
-    r5 = bq11_early_arrivals(flights_fact)
-    r6 = bq12_distance_effect(flights_fact)
-
-    return r1, r2, r3, r4, r5, r6
+def run_business_questions_3(flights, carriers, airports, date):
+    return bq7_distance_cancellation_impact(flights), bq8_carrier_recovery_speed(flights, date), \
+        bq9_security_delay_airports(flights, airports), bq10_airport_growth_yoy(flights, date), \
+        bq11_late_aircraft_propagation(flights), bq12_taxi_efficiency(flights, airports)
 
 
-# =========================================================
-# SAVE ALL (FINAL FIX)
-# =========================================================
 def save_results_3(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_3"):
-
     os.makedirs(output_path, exist_ok=True)
-
     results = [r1, r2, r3, r4, r5, r6]
+    titles = [
+        "Cancellation Probability by Distance Category",
+        "Carrier Recovery Speed Trend",
+        "Security Delay Share by Airport",
+        "Year-over-Year Flight Volume Growth",
+        "Late Aircraft Delay Propagation by Route",
+        "Airport Operational Efficiency (Total Taxi Time)"
+    ]
 
-    for i, df in enumerate(results, start=1):
-        print(f"\n=== ТЕХНІЧНИЙ ПЛАН ВИКОНАННЯ (EXTERNAL) ДЛЯ BQ{i + 6} ===")
-        df.explain(mode="extended")
-        final_path = f"{output_path}/bq{i}.csv"
-        save_single_csv(df, final_path)
+    for i, df in enumerate(results, start=7):
+        bq_id = f"bq{i}"
+        print(f"\n--- Processing {bq_id} ---")
+        df.show(10)
 
-    print(f"All results saved as SINGLE CSV files in {output_path}")
+        # Створення графіка
+        create_visualizations(df, bq_id, titles[i - 7])
 
+        # Збереження CSV
+        save_single_csv(df, f"{output_path}/{bq_id}.csv")
