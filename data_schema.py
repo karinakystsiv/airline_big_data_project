@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 
-spark = SparkSession.builder.appName("SchemaTest").getOrCreate()
+
 
 flight_schema = StructType([
     StructField("FL_DATE", DateType(), True),
@@ -34,6 +34,3 @@ flight_schema = StructType([
     StructField("Unnamed: 27", StringType(), True),
 ])
 
-df = spark.read.csv("data/*.csv", header=True, schema=flight_schema)
-df.printSchema()
-spark.stop()
