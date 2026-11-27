@@ -1,4 +1,5 @@
 import logging
+import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 
@@ -12,6 +13,8 @@ from data_modeling import create_all_tables
 from business_logic_1 import run_business_questions, save_results
 from business_logic_2 import run_business_questions_2, save_results_2
 from business_logic_3 import run_business_questions_3, save_results_3
+from data_analysis import run_data_analysis
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -28,7 +31,8 @@ def main():
 
     logger.info("SparkSession успішно створено.")
 
-    data_path = r"/data"
+    # Шлях до даних можна змінити змінною середовища DATA_PATH (за замовчуванням /data у Docker)
+    data_path = os.environ.get("DATA_PATH", "/data")
 
     try:
         flight_df = load_partitioned_csv(
@@ -93,6 +97,10 @@ def main():
         )
 
         save_results_3(r1, r2, r3, r4, r5, r6, output_path="output/business_logic_3")
+
+        # ЕТАП АНАЛІЗУ ДАНИХ (регресія та класифікація)
+        logger.info("--- Початок етапу аналізу даних ---")
+        run_data_analysis(spark, flight_df, output_path="output/data_analysis")
 
     except Exception as e:
         logger.error(f"Сталася помилка під час виконання: {e}")

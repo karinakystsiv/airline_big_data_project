@@ -25,6 +25,21 @@
 ## Етап трансформації
 **Кожен учасник:** Кожен учасник у своєму файлі реалізує **6 власних бізнес-питань** та аналізує план виконання.
 
+## Етап аналізу даних
+**Кожен учасник:** Побудова регресійних та класифікаційних моделей у PySpark ML, аналіз процесу навчання та порівняння алгоритмів.
+
+* **Задача регресії:** прогноз затримки прибуття `ARR_DELAY` (хв) після вильоту рейсу.
+  Моделі: LinearRegression, DecisionTreeRegressor, RandomForestRegressor, GBTRegressor. Метрики: RMSE, MAE, R².
+* **Задача класифікації:** чи запізниться рейс на 15+ хв (`IS_DELAYED`) лише за ознаками, відомими до вильоту.
+  Моделі: LogisticRegression, DecisionTreeClassifier, RandomForestClassifier, GBTClassifier. Метрики: Accuracy, Precision, Recall, F1, ROC-AUC.
+
+* **Ліза:** Попередня обробка для ML (`ml_preprocessing.py`): відбір рядків, видалення викидів, циклічне кодування часу, target encoding аеропортів, one-hot для авіакомпаній, масштабування, ваги класів, розбиття train/test. Аналіз процесу навчання та порівняння алгоритмів для обох задач (загальна частина `model_evaluation.py`): збереження таблиць метрик у CSV, графіки порівняння моделей та train vs test (виявлення перенавчання), криві навчання й криві валідації глибини дерева, графіки важливості ознак. Інтеграція етапу (`data_analysis.py`, підключення в `main.py`, оновлення `Dockerfile` та `.gitignore`).
+* **Каріна:** Регресійні моделі (`regression_models.py`): навчання LinearRegression, DecisionTreeRegressor, RandomForestRegressor та GBTRegressor, baseline-модель. Оцінювання регресії (`model_evaluation.py`): RMSE, MAE, R², діагностика залишків найкращої моделі.
+* **Віта:** Класифікаційні моделі (`classification_models.py`): навчання LogisticRegression, DecisionTreeClassifier, RandomForestClassifier та GBTClassifier з урахуванням дисбалансу класів, baseline-модель. Оцінювання класифікації (`model_evaluation.py`): Accuracy, Precision, Recall, F1, ROC-AUC, матриця помилок найкращої моделі.
+* **Спільно:** висновки щодо найкращих моделей для кожної задачі.
+
+Результати: `output/data_analysis/regression_metrics`, `output/data_analysis/classification_metrics` (CSV) та графіки в `output/data_analysis/plots/`.
+
 ## Етап запису результатів
 **Кожен учасник:** Кожен учасник реалізує функцію запису своїх відповідей у `.csv`, налаштовує параметри запису та ігнорування результатів у `.gitignore`, координує структури вихідних папок `output/`, перевіряє коректність формату записаних файлів та виконує збір усіх планів у документацію проекту.
 

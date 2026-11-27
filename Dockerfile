@@ -8,7 +8,7 @@ FROM eclipse-temurin:${OPENJDK_VERSION}-jdk
 COPY --from=py3 / /
 
 ARG PYSPARK_VERSION=3.5.0
-RUN pip --no-cache-dir install pyspark==${PYSPARK_VERSION} matplotlib seaborn
+RUN pip --no-cache-dir install pyspark==${PYSPARK_VERSION} numpy pandas matplotlib seaborn matplotlib seaborn
 
 COPY . .
 
